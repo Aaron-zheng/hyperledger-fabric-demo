@@ -7,7 +7,10 @@ import com.example.demo.fabric.sdkintegration.SampleStore;
 import com.example.demo.fabric.sdkintegration.SampleUser;
 import com.example.demo.service.DemoService;
 
+import com.google.protobuf.ByteString;
 import org.hyperledger.fabric.sdk.*;
+import org.hyperledger.fabric.sdk.exception.CryptoException;
+import org.hyperledger.fabric.sdk.exception.InvalidArgumentException;
 import org.hyperledger.fabric.sdk.security.CryptoSuite;
 import org.hyperledger.fabric_ca.sdk.HFCAClient;
 import org.hyperledger.fabric_ca.sdk.RegistrationRequest;
@@ -17,11 +20,11 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.nio.file.Paths;
-import java.util.Collection;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import static java.lang.String.format;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 @Service
 public class DemoServiceImpl implements DemoService {
@@ -29,46 +32,75 @@ public class DemoServiceImpl implements DemoService {
     private static final Logger LOGGER = LoggerFactory.getLogger(DemoServiceImpl.class);
 
     private static final TestConfig testConfig = TestConfig.getConfig();
-    private static Collection<SampleOrg> testSampleOrgs;
     private static SampleOrg sampleOrg;
+    private static HFClient client = HFClient.createNewInstance();
+    private static SampleStore sampleStore;
+    private static HFCAClient ca;
+    private static SampleUser admin;
+    private static Channel channel;
+    private static ChaincodeID chaincodeID;
+    private static Orderer orderer;
+
+    static {
+        LOGGER.info("java.io.tmpdir: " + System.getProperty("java.io.tmpdir"));
+
+        try {
+            //////////////////////////////////////////////////////初始化，保存文件
+            client.setCryptoSuite(CryptoSuite.Factory.getCryptoSuite());
+            File sampleStoreFile = new File(System.getProperty("java.io.tmpdir") + "/HFCSampletest.properties");
+            sampleStore = new SampleStore(sampleStoreFile);
+            //sampleOrg的名称为peerOrg1
+            sampleOrg = testConfig.getIntegrationTestsSampleOrgs().iterator().next();
+            sampleOrg.setCAClient(HFCAClient.createNewInstance(sampleOrg.getCALocation(), sampleOrg.getCAProperties()));
+            ca = sampleOrg.getCAClient();
+            chaincodeID = ChaincodeID.newBuilder()
+                    .setName("example_cc_go")
+                    .setVersion("1")
+                    .setPath("github.com/example_cc")
+                    .build();
+            //创建order这里，并没有发送到fabric
+            String orderName = sampleOrg.getOrdererNames().iterator().next();
+            orderer = client.newOrderer(orderName, sampleOrg.getOrdererLocation(orderName));
+
+
+            //////////////////////////////////////////////////////设置peerOrgAdmin
+            String sampleOrgName = sampleOrg.getName();
+            String sampleOrgDomainName =sampleOrg.getDomainName();
+            //参数为name, org, MSPID, privateKeyFile,certificateFile
+            SampleUser peerOrgAdmin = sampleStore.getMember(sampleOrgName + "Admin", sampleOrgName, sampleOrg.getMSPID(),
+                    findFile_sk(Paths.get(testConfig.getTestChannlePath(), "crypto-config/peerOrganizations/",
+                            sampleOrgDomainName, format("/users/Admin@%s/msp/keystore", sampleOrgDomainName)).toFile()),
+                    Paths.get(testConfig.getTestChannlePath(), "crypto-config/peerOrganizations/", sampleOrgDomainName,
+                            format("/users/Admin@%s/msp/signcerts/Admin@%s-cert.pem", sampleOrgDomainName, sampleOrgDomainName)).toFile());
+            //该peerOrgAdmin是用来创建channel，添加peer，和安装chaincode
+            sampleOrg.setPeerAdmin(peerOrgAdmin);
+
+            //////////////////////////////////////////////////////设置orderer
+            client.setUserContext(sampleOrg.getPeerAdmin());
+            channel = client.newChannel("foo");
+            channel.addOrderer(orderer);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     @Override
     public void start() {
 
     }
 
-
-    public static void main(String[] args) throws Exception{
-
-        //////////////////////////////////////////////////////初始化，保存文件
-        HFClient client = HFClient.createNewInstance();
-        client.setCryptoSuite(CryptoSuite.Factory.getCryptoSuite());
-        LOGGER.info("java.io.tmpdir: " + System.getProperty("java.io.tmpdir"));
-        File sampleStoreFile = new File(System.getProperty("java.io.tmpdir") + "/HFCSampletest.properties");
-        SampleStore sampleStore = new SampleStore(sampleStoreFile);
-
-
-
-        //////////////////////////////////////////////////////获取组织
-        //sampleOrg的名称为peerOrg1
-        testSampleOrgs = testConfig.getIntegrationTestsSampleOrgs();
-        sampleOrg = testSampleOrgs.iterator().next();
-        sampleOrg.setCAClient(HFCAClient.createNewInstance(sampleOrg.getCALocation(), sampleOrg.getCAProperties()));
-
-
-        //////////////////////////////////////////////////////注册ca（可以多次注册)
-        HFCAClient ca = sampleOrg.getCAClient();
+    private static void enrollAdmin() throws Exception {
         ca.setCryptoSuite(CryptoSuite.Factory.getCryptoSuite());
-        SampleUser admin = sampleStore.getMember("admin", sampleOrg.getName());
+        admin = sampleStore.getMember("admin", sampleOrg.getName());
         //enrollment这步会在，本地生成keypair和csr，然后发送到fabric-ca进行签名（enrollment会包含，私钥和数字证书）
         Enrollment adminEnrollment = ca.enroll(admin.getName(), "adminpw");
         admin.setEnrollment(adminEnrollment);
         admin.setMPSID(sampleOrg.getMSPID());
         //该机构的admin
         sampleOrg.setAdmin(admin);
+    }
 
-
-        //////////////////////////////////////////////////////会员注册（同一个用户名，不可以重复注册）
+    private static void enrollMember() throws Exception{
         SampleUser user = sampleStore.getMember("user1", sampleOrg.getName());
         //affiliation
         RegistrationRequest registrationRequest = new RegistrationRequest(user.getName(), "org1.department1");
@@ -76,60 +108,139 @@ public class DemoServiceImpl implements DemoService {
         String enrollmentSecret = ca.register(registrationRequest, admin);
         user.setEnrollmentSecret(enrollmentSecret);
         //获取enrollment
+        //如果重复注册，则会返回 {"success":false,"result":null,"errors":[{"code":0,"message":"Identity 'user1' is already registered"}],"messages":[]}
         Enrollment userEnrollment = ca.enroll(user.getName(), user.getEnrollmentSecret());
         user.setEnrollment(userEnrollment);
         user.setMPSID(sampleOrg.getMSPID());
         sampleOrg.addUser(user);
+    }
 
 
-        //////////////////////////////////////////////////////设置peerOrgAdmin
-        String sampleOrgName = sampleOrg.getName();
-        String sampleOrgDomainName =sampleOrg.getDomainName();
-        //参数为name, org, MSPID, privateKeyFile,certificateFile
-        SampleUser peerOrgAdmin = sampleStore.getMember(sampleOrgName + "Admin", sampleOrgName, sampleOrg.getMSPID(),
-                findFile_sk(Paths.get(testConfig.getTestChannlePath(), "crypto-config/peerOrganizations/",
-                        sampleOrgDomainName, format("/users/Admin@%s/msp/keystore", sampleOrgDomainName)).toFile()),
-                Paths.get(testConfig.getTestChannlePath(), "crypto-config/peerOrganizations/", sampleOrgDomainName,
-                        format("/users/Admin@%s/msp/signcerts/Admin@%s-cert.pem", sampleOrgDomainName, sampleOrgDomainName)).toFile());
-        //该peerOrgAdmin是用来创建channel，添加peer，和安装chaincode的
-        sampleOrg.setPeerAdmin(peerOrgAdmin);
-
-
-        //////////////////////////////////////////////////////创建orderer
-        String orderName = sampleOrg.getOrdererNames().iterator().next();
-        Properties ordererProperties = testConfig.getOrdererProperties(orderName);
-        //设置keepAlive
-        ordererProperties.put("grpc.NettyChannelBuilderOption.keepAliveTime", new Object[] {5L, TimeUnit.MINUTES});
-        ordererProperties.put("grpc.NettyChannelBuilderOption.keepAliveTimeout", new Object[] {8L, TimeUnit.SECONDS});
-        Orderer orderer = client.newOrderer(orderName, sampleOrg.getOrdererLocation(orderName), ordererProperties);
-
-
-        //////////////////////////////////////////////////////创建channel
+    private static void createChannel() throws Exception {
+        //userContext不能为空
         client.setUserContext(sampleOrg.getPeerAdmin());
         ChannelConfiguration channelConfiguration = new ChannelConfiguration(new File("src/main/java/com/example/demo/fabric/fixture/sdkintegration/e2e-2Orgs/channel/foo.tx"));
-        //channelName, orderer, channelConfiguration, channelConfigurationSignatures
-        Channel fooChannel = client.newChannel("foo", orderer, channelConfiguration,
+        //创建channel，是需要连接到fabric
+        //参数channelName, orderer, channelConfiguration, channelConfigurationSignatures
+        //如果重复创建，会返回New channel foo error. StatusValue 400. Status BAD_REQUEST
+        channel = client.newChannel("foo", orderer, channelConfiguration,
                 client.getChannelConfigurationSignature(channelConfiguration, sampleOrg.getPeerAdmin())
-                );
+        );
+        //channel的创建，其实是通过orderer.sendTransaction实现的
+        //会创建创世区块getGenesisBlock，并且需要添加共识节点orderer
+    }
 
-
-        //////////////////////////////////////////////////////创建peer
+    private static void peerJoinChannel() throws Exception{
         String peerName = sampleOrg.getPeerNames().iterator().next();
         String peerLocation = sampleOrg.getPeerLocation(peerName);
-        Properties peerProperties = new Properties();
-        //举例说明，设置一些特别的参数
-        peerProperties.put("grpc.NettyChannelBuilderOption.maxInboundMessageSize", 9000000);
-        Peer peer = client.newPeer(peerName, peerLocation, peerProperties);
-        fooChannel.joinPeer(peer);
+        //创建peer这步不会连接到fabric
+        Peer peer = client.newPeer(peerName, peerLocation);
+        //channel添加peer节点，会连接到fabric
+        //重复添加的话，会提示status: 500, message: Cannot create ledger from genesis block, due to LedgerID already exists
+        channel.joinPeer(peer);
+        //通过Envelope发去orderer来创建创世块
         sampleOrg.addPeer(peer);
+    }
+
+    private static void initialChannel() throws Exception {
+        //Starts the channel. event hubs will connect
+        channel.initialize();
+    }
+
+    private static void installChaincode() throws Exception {
+        Collection<ProposalResponse> responses;
+        client.setUserContext(sampleOrg.getPeerAdmin());
+        InstallProposalRequest installProposalRequest = client.newInstallProposalRequest();
+        installProposalRequest.setChaincodeID(chaincodeID);
+        installProposalRequest.setChaincodeSourceLocation(new File("src/main/java/com/example/demo/fabric/fixture/sdkintegration/gocc/sample1"));
+        installProposalRequest.setChaincodeVersion("1");
+        responses = client.sendInstallProposal(installProposalRequest, sampleOrg.getPeers());
+
+        Collection<ProposalResponse> successful = new LinkedList<>();
+        Collection<ProposalResponse> failed = new LinkedList<>();
+        for(ProposalResponse proposalResponse : responses) {
+            if(proposalResponse.getStatus() == ProposalResponse.Status.SUCCESS) {
+                successful.add(proposalResponse);
+            } else {
+                failed.add(proposalResponse);
+            }
+        }
+    }
+
+    private static void instantiateChaincode() throws Exception{
+        Collection<ProposalResponse> responses;
+        InstantiateProposalRequest instantiateProposalRequest = client.newInstantiationProposalRequest();
+        instantiateProposalRequest.setProposalWaitTime(testConfig.getProposalWaitTime());
+        instantiateProposalRequest.setChaincodeID(chaincodeID);
+        instantiateProposalRequest.setFcn("init");
+        instantiateProposalRequest.setArgs(new String[] {"a", "500", "b", "200"});
+        Map<String, byte[]> tm = new HashMap<>();
+        tm.put("HyperLedgerFabric", "InstantiateProposalRequest:JavaSDK".getBytes(UTF_8));
+        tm.put("method", "InstantiateProposalRequest".getBytes(UTF_8));
+        instantiateProposalRequest.setTransientMap(tm);
+        ChaincodeEndorsementPolicy chaincodeEndorsementPolicy = new ChaincodeEndorsementPolicy();
+        chaincodeEndorsementPolicy.fromYamlFile(new File("src/main/java/com/example/demo/fabric/fixture/sdkintegration/chaincodeendorsementpolicy.yaml"));
+        instantiateProposalRequest.setChaincodeEndorsementPolicy(chaincodeEndorsementPolicy);
+        //发送实例化请求到fabric
+        responses = channel.sendInstantiationProposal(instantiateProposalRequest);
+
+        //////////////////////////////////////////////////////发送结果到orderer
+        Collection<ProposalResponse> successful = new LinkedList<>();
+        Collection<ProposalResponse> failed = new LinkedList<>();
+        for(ProposalResponse proposalResponse : responses) {
+            if(proposalResponse.isVerified() && proposalResponse.getStatus() == ProposalResponse.Status.SUCCESS) {
+                successful.add(proposalResponse);
+            } else {
+                failed.add(proposalResponse);
+            }
+        }
+        channel.sendTransaction(successful, channel.getOrderers());
+    }
 
 
+    private static void queryChaincode() throws Exception {
+        Collection<ProposalResponse> responses;
+        QueryByChaincodeRequest queryByChaincodeRequest = client.newQueryProposalRequest();
+        queryByChaincodeRequest.setArgs(new String[] {"query", "b"});
+        queryByChaincodeRequest.setFcn("invoke");
+        queryByChaincodeRequest.setChaincodeID(chaincodeID);
+        Map<String, byte[]> tm2 = new HashMap<>();
+        tm2.put("HyperLedgerFabric", "QueryByChaincodeRequest:JavaSDK".getBytes(UTF_8));
+        tm2.put("method", "QueryByChaincodeRequest".getBytes(UTF_8));
+        queryByChaincodeRequest.setTransientMap(tm2);
+        responses = channel.queryByChaincode(queryByChaincodeRequest);
+        for(ProposalResponse proposalResponse: responses) {
+            if(proposalResponse.isVerified() && proposalResponse.getStatus() == ProposalResponse.Status.SUCCESS) {
+                String payload = proposalResponse.getProposalResponse().getResponse().getPayload().toStringUtf8();
+                LOGGER.info("payload: " + payload);
+            }
+        }
+    }
+
+    public static void main(String[] args) throws Exception{
 
 
-
-
+        //////////////////////////////////////////////////////注册ca（可以多次注册，每次生成的证书和密钥对都不一样)
+//        enrollAdmin();
+        //////////////////////////////////////////////////////会员注册（同一个用户名，不可以重复注册）
+//        enrollMember();
+        //////////////////////////////////////////////////////创建channel（不可以重复创建）
+//        createChannel();
+        //////////////////////////////////////////////////////把peer加入到channel（不可以重复加入）
+//        peerJoinChannel();
+        //////////////////////////////////////////////////////初始化channel
+//        initialChannel();
+        //////////////////////////////////////////////////////安装chaincode
+//        installChaincode();
+        //////////////////////////////////////////////////////实例化chaincode
+//        instantiateChaincode();
+        //////////////////////////////////////////////////////查询结果
+//        Thread.sleep(5000);
+//        queryChaincode();
 
     }
+
+
 
 
     private static File findFile_sk(File directory) {
