@@ -7,10 +7,8 @@ import com.example.demo.fabric.sdkintegration.SampleStore;
 import com.example.demo.fabric.sdkintegration.SampleUser;
 import com.example.demo.service.DemoService;
 
-import com.google.protobuf.ByteString;
+import org.hyperledger.fabric.protos.peer.FabricTransaction;
 import org.hyperledger.fabric.sdk.*;
-import org.hyperledger.fabric.sdk.exception.CryptoException;
-import org.hyperledger.fabric.sdk.exception.InvalidArgumentException;
 import org.hyperledger.fabric.sdk.security.CryptoSuite;
 import org.hyperledger.fabric_ca.sdk.HFCAClient;
 import org.hyperledger.fabric_ca.sdk.RegistrationRequest;
@@ -21,7 +19,6 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -40,6 +37,7 @@ public class DemoServiceImpl implements DemoService {
     private static Channel channel;
     private static ChaincodeID chaincodeID;
     private static Orderer orderer;
+    private static Peer peer;
 
     static {
         LOGGER.info("java.io.tmpdir: " + System.getProperty("java.io.tmpdir"));
@@ -74,11 +72,11 @@ public class DemoServiceImpl implements DemoService {
                             format("/users/Admin@%s/msp/signcerts/Admin@%s-cert.pem", sampleOrgDomainName, sampleOrgDomainName)).toFile());
             //该peerOrgAdmin是用来创建channel，添加peer，和安装chaincode
             sampleOrg.setPeerAdmin(peerOrgAdmin);
-
-            //////////////////////////////////////////////////////设置orderer
-            client.setUserContext(sampleOrg.getPeerAdmin());
-            channel = client.newChannel("foo");
-            channel.addOrderer(orderer);
+            //创建peer
+            String peerName = sampleOrg.getPeerNames().iterator().next();
+            String peerLocation = sampleOrg.getPeerLocation(peerName);
+            //创建peer这步不会连接到fabric
+            peer = client.newPeer(peerName, peerLocation);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -131,10 +129,6 @@ public class DemoServiceImpl implements DemoService {
     }
 
     private static void peerJoinChannel() throws Exception{
-        String peerName = sampleOrg.getPeerNames().iterator().next();
-        String peerLocation = sampleOrg.getPeerLocation(peerName);
-        //创建peer这步不会连接到fabric
-        Peer peer = client.newPeer(peerName, peerLocation);
         //channel添加peer节点，会连接到fabric
         //重复添加的话，会提示status: 500, message: Cannot create ledger from genesis block, due to LedgerID already exists
         channel.joinPeer(peer);
@@ -199,22 +193,64 @@ public class DemoServiceImpl implements DemoService {
 
 
     private static void queryChaincode() throws Exception {
-        Collection<ProposalResponse> responses;
+        client.setUserContext(sampleOrg.getPeerAdmin());
+        channel = client.newChannel("foo");
+        channel.addOrderer(orderer);
+        channel.addPeer(peer);
+        channel.initialize();
+
         QueryByChaincodeRequest queryByChaincodeRequest = client.newQueryProposalRequest();
         queryByChaincodeRequest.setArgs(new String[] {"query", "b"});
         queryByChaincodeRequest.setFcn("invoke");
         queryByChaincodeRequest.setChaincodeID(chaincodeID);
+
         Map<String, byte[]> tm2 = new HashMap<>();
         tm2.put("HyperLedgerFabric", "QueryByChaincodeRequest:JavaSDK".getBytes(UTF_8));
         tm2.put("method", "QueryByChaincodeRequest".getBytes(UTF_8));
         queryByChaincodeRequest.setTransientMap(tm2);
-        responses = channel.queryByChaincode(queryByChaincodeRequest);
+
+        Collection<ProposalResponse> responses = channel.queryByChaincode(queryByChaincodeRequest);
         for(ProposalResponse proposalResponse: responses) {
             if(proposalResponse.isVerified() && proposalResponse.getStatus() == ProposalResponse.Status.SUCCESS) {
                 String payload = proposalResponse.getProposalResponse().getResponse().getPayload().toStringUtf8();
                 LOGGER.info("payload: " + payload);
             }
         }
+    }
+
+    private static void transferChaincode() throws Exception {
+        client.setUserContext(sampleOrg.getPeerAdmin());
+        channel = client.newChannel("foo");
+        channel.addOrderer(orderer);
+        channel.addPeer(peer);
+        channel.initialize();
+
+        TransactionProposalRequest transactionProposalRequest = client.newTransactionProposalRequest();
+        transactionProposalRequest.setChaincodeID(chaincodeID);
+        transactionProposalRequest.setFcn("invoke");
+        transactionProposalRequest.setArgs(new String[]{"move", "a", "b", "100"});
+
+        Map<String, byte[]> tm2 = new HashMap<>();
+        tm2.put("HyperLedgerFabric", "TransactionProposalRequest:JavaSDK".getBytes(UTF_8));
+        tm2.put("method", "TransactionProposalRequest".getBytes(UTF_8));
+        tm2.put("result", ":)".getBytes(UTF_8));  /// This should be returned see chaincode.
+        transactionProposalRequest.setTransientMap(tm2);
+
+
+        Collection<ProposalResponse> successful = new LinkedList<>();
+        Collection<ProposalResponse> failed = new LinkedList<>();
+        Collection<ProposalResponse> responses = channel.sendTransactionProposal(transactionProposalRequest);
+        for(ProposalResponse proposalResponse : responses) {
+            if(proposalResponse.isVerified() && proposalResponse.getStatus() == ProposalResponse.Status.SUCCESS) {
+                successful.add(proposalResponse);
+            } else {
+                failed.add(proposalResponse);
+            }
+        }
+
+        channel.sendTransaction(successful);
+
+
     }
 
     public static void main(String[] args) throws Exception{
@@ -237,7 +273,8 @@ public class DemoServiceImpl implements DemoService {
         //////////////////////////////////////////////////////查询结果
 //        Thread.sleep(5000);
 //        queryChaincode();
-
+        //////////////////////////////////////////////////////转发结果
+//        transferChaincode();
     }
 
 
