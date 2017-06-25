@@ -1,6 +1,6 @@
 server:
   port: 8080
-  context-path: /fabric-server
+  context-path: /hyperledger-fabric-demo
 
 
 spring:

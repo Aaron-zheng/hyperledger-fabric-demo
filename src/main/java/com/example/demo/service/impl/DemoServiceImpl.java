@@ -52,9 +52,9 @@ public class DemoServiceImpl implements DemoService {
             sampleOrg.setCAClient(HFCAClient.createNewInstance(sampleOrg.getCALocation(), sampleOrg.getCAProperties()));
             ca = sampleOrg.getCAClient();
             chaincodeID = ChaincodeID.newBuilder()
-                    .setName("example_cc_go")
+                    .setName("demo_cc_go")
                     .setVersion("1")
-                    .setPath("github.com/example_cc")
+                    .setPath("github.com/demo_cc")
                     .build();
             //创建order这里，并没有发送到fabric
             String orderName = sampleOrg.getOrdererNames().iterator().next();
@@ -83,9 +83,72 @@ public class DemoServiceImpl implements DemoService {
     }
 
     @Override
-    public void start() {
+    public String start() {
+        String result = "";
+        try {
+            createChannel();
+            peerJoinChannel();
+            initialChannel();
+            installChaincode();
+            instantiateChaincode();
+            result = "启动成功";
+        } catch (Exception ex) {
+            result = "启动失败";
+            LOGGER.error(ex.getMessage(), ex);
+        }
+
+        return result;
 
     }
+
+    @Override
+    public String transfer() {
+        String result = "";
+        try {
+            transferChaincode();
+            result = "转账成功";
+        } catch (Exception ex) {
+            result = "转账失败";
+            LOGGER.error(ex.getMessage(), ex);
+        }
+
+        return result;
+    }
+
+    @Override
+    public String query() {
+        try {
+            return queryChaincode();
+        } catch (Exception ex) {
+            LOGGER.error(ex.getMessage(), ex);
+        }
+
+        return "查询失败";
+    }
+
+
+    public static void main(String[] args) throws Exception{
+        //////////////////////////////////////////////////////注册ca（可以多次注册，每次生成的证书和密钥对都不一样)
+//        enrollAdmin();
+        //////////////////////////////////////////////////////会员注册（同一个用户名，不可以重复注册）
+//        enrollMember();
+        //////////////////////////////////////////////////////创建channel（不可以重复创建）
+//        createChannel();
+        //////////////////////////////////////////////////////把peer加入到channel（不可以重复加入）
+//        peerJoinChannel();
+        //////////////////////////////////////////////////////初始化channel
+//        initialChannel();
+        //////////////////////////////////////////////////////安装chaincode
+//        installChaincode();
+        //////////////////////////////////////////////////////实例化chaincode
+//        instantiateChaincode();
+        //////////////////////////////////////////////////////查询结果
+//        Thread.sleep(5000);
+//        queryChaincode();
+        //////////////////////////////////////////////////////转发结果
+//        transferChaincode();
+    }
+
 
     private static void enrollAdmin() throws Exception {
         ca.setCryptoSuite(CryptoSuite.Factory.getCryptoSuite());
@@ -191,13 +254,28 @@ public class DemoServiceImpl implements DemoService {
         channel.sendTransaction(successful, channel.getOrderers());
     }
 
+    private static void check() throws Exception {
+        if(null == client.getUserContext()) {
+            client.setUserContext(sampleOrg.getPeerAdmin());
+        }
+        if(null == channel) {
+            channel = client.newChannel("foo");
+        }
+        if(channel.getOrderers().isEmpty()) {
+            channel.addOrderer(orderer);
+        }
+        if(channel.getPeers().isEmpty()) {
+            channel.addPeer(peer);
+        }
+        if(!channel.isInitialized()) {
+            channel.initialize();
+        }
 
-    private static void queryChaincode() throws Exception {
-        client.setUserContext(sampleOrg.getPeerAdmin());
-        channel = client.newChannel("foo");
-        channel.addOrderer(orderer);
-        channel.addPeer(peer);
-        channel.initialize();
+    }
+
+
+    private static String queryChaincode() throws Exception {
+        check();
 
         QueryByChaincodeRequest queryByChaincodeRequest = client.newQueryProposalRequest();
         queryByChaincodeRequest.setArgs(new String[] {"query", "b"});
@@ -209,21 +287,23 @@ public class DemoServiceImpl implements DemoService {
         tm2.put("method", "QueryByChaincodeRequest".getBytes(UTF_8));
         queryByChaincodeRequest.setTransientMap(tm2);
 
+        String result = "";
         Collection<ProposalResponse> responses = channel.queryByChaincode(queryByChaincodeRequest);
         for(ProposalResponse proposalResponse: responses) {
             if(proposalResponse.isVerified() && proposalResponse.getStatus() == ProposalResponse.Status.SUCCESS) {
                 String payload = proposalResponse.getProposalResponse().getResponse().getPayload().toStringUtf8();
                 LOGGER.info("payload: " + payload);
+                if(result.length() > 0) {
+                    result += ",";
+                }
+                result += payload;
             }
         }
+        return result;
     }
 
     private static void transferChaincode() throws Exception {
-        client.setUserContext(sampleOrg.getPeerAdmin());
-        channel = client.newChannel("foo");
-        channel.addOrderer(orderer);
-        channel.addPeer(peer);
-        channel.initialize();
+        check();
 
         TransactionProposalRequest transactionProposalRequest = client.newTransactionProposalRequest();
         transactionProposalRequest.setChaincodeID(chaincodeID);
@@ -251,30 +331,6 @@ public class DemoServiceImpl implements DemoService {
         channel.sendTransaction(successful);
 
 
-    }
-
-    public static void main(String[] args) throws Exception{
-
-
-        //////////////////////////////////////////////////////注册ca（可以多次注册，每次生成的证书和密钥对都不一样)
-//        enrollAdmin();
-        //////////////////////////////////////////////////////会员注册（同一个用户名，不可以重复注册）
-//        enrollMember();
-        //////////////////////////////////////////////////////创建channel（不可以重复创建）
-//        createChannel();
-        //////////////////////////////////////////////////////把peer加入到channel（不可以重复加入）
-//        peerJoinChannel();
-        //////////////////////////////////////////////////////初始化channel
-//        initialChannel();
-        //////////////////////////////////////////////////////安装chaincode
-//        installChaincode();
-        //////////////////////////////////////////////////////实例化chaincode
-//        instantiateChaincode();
-        //////////////////////////////////////////////////////查询结果
-//        Thread.sleep(5000);
-//        queryChaincode();
-        //////////////////////////////////////////////////////转发结果
-//        transferChaincode();
     }
 
 

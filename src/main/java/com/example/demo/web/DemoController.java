@@ -17,7 +17,18 @@ public class DemoController {
     @RequestMapping("start")
     @ResponseBody
     public String start() {
+        return demoService.start();
+    }
 
-        return "start";
+    @RequestMapping("query")
+    @ResponseBody
+    public String query() {
+        return demoService.query();
+    }
+
+    @RequestMapping("transfer")
+    @ResponseBody
+    public String transfer() {
+        return demoService.transfer();
     }
 }

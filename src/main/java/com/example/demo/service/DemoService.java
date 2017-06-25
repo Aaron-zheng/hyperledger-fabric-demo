@@ -3,5 +3,9 @@ package com.example.demo.service;
 
 public interface DemoService {
 
-    void start();
+    String start();
+
+    String transfer();
+
+    String query();
 }
