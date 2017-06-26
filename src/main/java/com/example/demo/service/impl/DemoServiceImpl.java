@@ -52,9 +52,9 @@ public class DemoServiceImpl implements DemoService {
             sampleOrg.setCAClient(HFCAClient.createNewInstance(sampleOrg.getCALocation(), sampleOrg.getCAProperties()));
             ca = sampleOrg.getCAClient();
             chaincodeID = ChaincodeID.newBuilder()
-                    .setName("demo_cc_go")
+                    .setName("demo_cc_go1")
                     .setVersion("1")
-                    .setPath("github.com/demo_cc")
+                    .setPath("demo_cc")
                     .build();
             //创建order这里，并没有发送到fabric
             String orderName = sampleOrg.getOrdererNames().iterator().next();
@@ -83,7 +83,7 @@ public class DemoServiceImpl implements DemoService {
     }
 
     @Override
-    public String start() {
+    public String initial() {
         String result = "";
         try {
             createChannel();
@@ -99,54 +99,6 @@ public class DemoServiceImpl implements DemoService {
 
         return result;
 
-    }
-
-    @Override
-    public String transfer() {
-        String result = "";
-        try {
-            transferChaincode();
-            result = "转账成功";
-        } catch (Exception ex) {
-            result = "转账失败";
-            LOGGER.error(ex.getMessage(), ex);
-        }
-
-        return result;
-    }
-
-    @Override
-    public String query() {
-        try {
-            return queryChaincode();
-        } catch (Exception ex) {
-            LOGGER.error(ex.getMessage(), ex);
-        }
-
-        return "查询失败";
-    }
-
-
-    public static void main(String[] args) throws Exception{
-        //////////////////////////////////////////////////////注册ca（可以多次注册，每次生成的证书和密钥对都不一样)
-//        enrollAdmin();
-        //////////////////////////////////////////////////////会员注册（同一个用户名，不可以重复注册）
-//        enrollMember();
-        //////////////////////////////////////////////////////创建channel（不可以重复创建）
-//        createChannel();
-        //////////////////////////////////////////////////////把peer加入到channel（不可以重复加入）
-//        peerJoinChannel();
-        //////////////////////////////////////////////////////初始化channel
-//        initialChannel();
-        //////////////////////////////////////////////////////安装chaincode
-//        installChaincode();
-        //////////////////////////////////////////////////////实例化chaincode
-//        instantiateChaincode();
-        //////////////////////////////////////////////////////查询结果
-//        Thread.sleep(5000);
-//        queryChaincode();
-        //////////////////////////////////////////////////////转发结果
-//        transferChaincode();
     }
 
 
@@ -209,7 +161,7 @@ public class DemoServiceImpl implements DemoService {
         client.setUserContext(sampleOrg.getPeerAdmin());
         InstallProposalRequest installProposalRequest = client.newInstallProposalRequest();
         installProposalRequest.setChaincodeID(chaincodeID);
-        installProposalRequest.setChaincodeSourceLocation(new File("src/main/java/com/example/demo/fabric/fixture/sdkintegration/gocc/sample1"));
+        installProposalRequest.setChaincodeSourceLocation(new File("src/main/java/com/example/demo/chaincode"));
         installProposalRequest.setChaincodeVersion("1");
         responses = client.sendInstallProposal(installProposalRequest, sampleOrg.getPeers());
 
@@ -273,12 +225,47 @@ public class DemoServiceImpl implements DemoService {
 
     }
 
+    @Override
+    public String startEvent() {
+        String result = "startEvent 错误";
+        try {
+            executeTransaction(new String[] {"updateIsEventStarted", "1"});
+            result = "startEvent 成功";
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
 
-    private static String queryChaincode() throws Exception {
+    @Override
+    public String endEvent() {
+        String result = "endEvent 错误";
+        try {
+            executeTransaction(new String[] {"updateIsEventStarted", "0"});
+            result = "endEvent 成功";
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    @Override
+    public String isEventStarted() {
+        try {
+            return executeQuery(new String[] {"isEventStarted"});
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "isEventStarted 错误";
+    }
+
+
+
+    private static String executeQuery(String[] args) throws Exception {
         check();
 
         QueryByChaincodeRequest queryByChaincodeRequest = client.newQueryProposalRequest();
-        queryByChaincodeRequest.setArgs(new String[] {"query", "b"});
+        queryByChaincodeRequest.setArgs(args);
         queryByChaincodeRequest.setFcn("invoke");
         queryByChaincodeRequest.setChaincodeID(chaincodeID);
 
@@ -302,13 +289,13 @@ public class DemoServiceImpl implements DemoService {
         return result;
     }
 
-    private static void transferChaincode() throws Exception {
+    private static void executeTransaction(String[] args) throws Exception {
         check();
 
         TransactionProposalRequest transactionProposalRequest = client.newTransactionProposalRequest();
         transactionProposalRequest.setChaincodeID(chaincodeID);
         transactionProposalRequest.setFcn("invoke");
-        transactionProposalRequest.setArgs(new String[]{"move", "a", "b", "100"});
+        transactionProposalRequest.setArgs(args);
 
         Map<String, byte[]> tm2 = new HashMap<>();
         tm2.put("HyperLedgerFabric", "TransactionProposalRequest:JavaSDK".getBytes(UTF_8));
@@ -327,12 +314,8 @@ public class DemoServiceImpl implements DemoService {
                 failed.add(proposalResponse);
             }
         }
-
         channel.sendTransaction(successful);
-
-
     }
-
 
 
 
@@ -352,4 +335,26 @@ public class DemoServiceImpl implements DemoService {
 
     }
 
+
+    public static void main(String[] args) throws Exception{
+        //////////////////////////////////////////////////////注册ca（可以多次注册，每次生成的证书和密钥对都不一样)
+//        enrollAdmin();
+        //////////////////////////////////////////////////////会员注册（同一个用户名，不可以重复注册）
+//        enrollMember();
+        //////////////////////////////////////////////////////创建channel（不可以重复创建）
+//        createChannel();
+        //////////////////////////////////////////////////////把peer加入到channel（不可以重复加入）
+//        peerJoinChannel();
+        //////////////////////////////////////////////////////初始化channel
+//        initialChannel();
+        //////////////////////////////////////////////////////安装chaincode
+//        installChaincode();
+        //////////////////////////////////////////////////////实例化chaincode
+//        instantiateChaincode();
+        //////////////////////////////////////////////////////查询结果
+//        Thread.sleep(5000);
+//        queryChaincode();
+        //////////////////////////////////////////////////////转发结果
+//        transferChaincode();
+    }
 }

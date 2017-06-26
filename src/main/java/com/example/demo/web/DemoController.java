@@ -14,21 +14,28 @@ public class DemoController {
     @Autowired
     private DemoService demoService;
 
-    @RequestMapping("start")
+    @RequestMapping("initial")
     @ResponseBody
-    public String start() {
-        return demoService.start();
+    public String initial() {
+        return demoService.initial();
     }
 
-    @RequestMapping("query")
+    @RequestMapping("startEvent")
     @ResponseBody
-    public String query() {
-        return demoService.query();
+    public String startEvent() {
+        return demoService.startEvent();
     }
 
-    @RequestMapping("transfer")
+    @RequestMapping("endEvent")
     @ResponseBody
-    public String transfer() {
-        return demoService.transfer();
+    public String endEvent() {
+        return demoService.endEvent();
     }
+
+    @RequestMapping("isEventStarted")
+    @ResponseBody
+    public String isEventStarted() {
+        return demoService.isEventStarted();
+    }
+
 }

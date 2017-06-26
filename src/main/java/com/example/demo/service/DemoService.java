@@ -3,9 +3,11 @@ package com.example.demo.service;
 
 public interface DemoService {
 
-    String start();
+    String initial();
 
-    String transfer();
+    String startEvent();
 
-    String query();
+    String endEvent();
+
+    String isEventStarted();
 }
