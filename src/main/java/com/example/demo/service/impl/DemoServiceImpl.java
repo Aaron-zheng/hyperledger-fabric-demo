@@ -52,7 +52,7 @@ public class DemoServiceImpl implements DemoService {
             sampleOrg.setCAClient(HFCAClient.createNewInstance(sampleOrg.getCALocation(), sampleOrg.getCAProperties()));
             ca = sampleOrg.getCAClient();
             chaincodeID = ChaincodeID.newBuilder()
-                    .setName("demo_cc_go1")
+                    .setName("demo_cc_go2")
                     .setVersion("1")
                     .setPath("demo_cc")
                     .build();
@@ -259,6 +259,15 @@ public class DemoServiceImpl implements DemoService {
         return "isEventStarted 错误";
     }
 
+    @Override
+    public String query() {
+        try {
+            return executeQuery(new String[] {"query", "custom1"});
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "query 错误";
+    }
 
 
     private static String executeQuery(String[] args) throws Exception {

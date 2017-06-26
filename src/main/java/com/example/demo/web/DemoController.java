@@ -38,4 +38,10 @@ public class DemoController {
         return demoService.isEventStarted();
     }
 
+    @RequestMapping("query")
+    @ResponseBody
+    public Object query() {
+        return demoService.query();
+    }
+
 }

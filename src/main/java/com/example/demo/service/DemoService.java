@@ -10,4 +10,6 @@ public interface DemoService {
     String endEvent();
 
     String isEventStarted();
+
+    String query();
 }

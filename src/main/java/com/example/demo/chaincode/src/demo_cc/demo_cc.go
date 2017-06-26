@@ -3,7 +3,7 @@ package main
 import (
 
 	"strconv"
-
+	 "bytes"
 	"github.com/hyperledger/fabric/core/chaincode/shim"
 	pb "github.com/hyperledger/fabric/protos/peer"
 )
@@ -22,6 +22,7 @@ type SimpleChaincode struct {
 func (t *SimpleChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
 	//
 	var center, custom1, custom2 SimpleChaincode
+	var buf bytes.Buffer
 	//
 	center.luckyNumber = "0"
 	center.fullName = "彩票中心"
@@ -37,8 +38,11 @@ func (t *SimpleChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
 
 
 	//将state写入账本ledger中
-	stub.PutState("center", center)//彩票中心
+	_ := binary.Write(&buf, binary.LittleEndian, center)
+	stub.PutState("center", buf)//彩票中心
+	_ := binary.Write(&buf, binary.LittleEndian, custom1)
 	stub.PutState("custom1", custom1)//用户1
+	_ := binary.Write(&buf, binary.LittleEndian, custom2)
 	stub.PutState("custom2", custom2)//用户2
 	stub.PutState("isEventStarted", []byte(strconv.Itoa(0)))//活动是否启动，0代表未启动，1代表启动
 
@@ -48,6 +52,13 @@ func (t *SimpleChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
 	return shim.Success(transientData)
 }
 
+func (t *SimpleChaincode) query(stub shim.ChaincodeStubInterface) pb.Response {
+	_, args := stub.GetFunctionAndParameters()
+	var key string
+	key = args[1]
+	result, _ := stub.GetState(key)
+	return shim.Success(result)
+}
 
 func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 	_, args := stub.GetFunctionAndParameters()
@@ -56,8 +67,12 @@ func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 		return t.isEventStarted(stub, args)
 	}
 	//更新活动状态，0为关闭，1为开启
-	if args[0] =="updateIsEventStarted" {
+	if args[0] == "updateIsEventStarted" {
 		return t.updateIsEventStarted(stub, args)
+	}
+	//查询彩票中心，和用户信息
+	if args[0] == "query" {
+		return t.query(stub, args)
 	}
 	return shim.Error("*** Unknown action *** " + args[0])
 }
