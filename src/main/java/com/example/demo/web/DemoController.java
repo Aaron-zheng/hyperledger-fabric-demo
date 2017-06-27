@@ -4,6 +4,7 @@ package com.example.demo.web;
 import com.example.demo.service.DemoService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 
@@ -38,10 +39,25 @@ public class DemoController {
         return demoService.isEventStarted();
     }
 
-    @RequestMapping("query")
+    @RequestMapping("query/{key}")
     @ResponseBody
-    public Object query() {
-        return demoService.query();
+    public Object query(@PathVariable String key) {
+        if(null == key || key.equals("")) {
+            key = "center";
+        }
+        return demoService.query(key);
     }
 
+
+    @RequestMapping("buyLuckyNumber/{key}/{number}")
+    @ResponseBody
+    public Object buyLuckyNumber(@PathVariable String key, @PathVariable String number) {
+        return demoService.buyLuckyNumber(key, number);
+    }
+
+    @RequestMapping("inputLuckyNumber/{number}")
+    @ResponseBody
+    public Object inputLuckyNumber(@PathVariable String number) {
+        return demoService.inputLuckyNumber(number);
+    }
 }

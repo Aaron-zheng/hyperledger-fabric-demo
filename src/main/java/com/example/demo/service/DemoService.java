@@ -11,5 +11,9 @@ public interface DemoService {
 
     String isEventStarted();
 
-    String query();
+    String query(String key);
+
+    String buyLuckyNumber(String key, String number);
+
+    String inputLuckyNumber(String number);
 }

@@ -52,7 +52,7 @@ public class DemoServiceImpl implements DemoService {
             sampleOrg.setCAClient(HFCAClient.createNewInstance(sampleOrg.getCALocation(), sampleOrg.getCAProperties()));
             ca = sampleOrg.getCAClient();
             chaincodeID = ChaincodeID.newBuilder()
-                    .setName("demo_cc_go2")
+                    .setName("demo_cc_go23")
                     .setVersion("1")
                     .setPath("demo_cc")
                     .build();
@@ -260,13 +260,37 @@ public class DemoServiceImpl implements DemoService {
     }
 
     @Override
-    public String query() {
+    public String query(String key) {
         try {
-            return executeQuery(new String[] {"query", "custom1"});
+            return executeQuery(new String[] {"query", key});
         } catch (Exception e) {
             e.printStackTrace();
         }
         return "query 错误";
+    }
+
+    @Override
+    public String buyLuckyNumber(String key, String number) {
+        String result = "buyLuckyNumber 错误";
+        try {
+            executeTransaction(new String[] {"buyLuckyNumber", key, number});
+            result = "buyLuckyNumber 成功";
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    @Override
+    public String inputLuckyNumber(String number) {
+        String result = "inputLuckyNumber 错误";
+        try {
+            executeTransaction(new String[] {"inputLuckyNumber", number});
+            result = "inputLuckyNumber 成功";
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return result;
     }
 
 
