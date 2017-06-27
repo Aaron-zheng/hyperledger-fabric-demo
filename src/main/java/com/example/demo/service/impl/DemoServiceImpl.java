@@ -7,7 +7,7 @@ import com.example.demo.fabric.sdkintegration.SampleStore;
 import com.example.demo.fabric.sdkintegration.SampleUser;
 import com.example.demo.service.DemoService;
 
-import org.hyperledger.fabric.protos.peer.FabricTransaction;
+import org.hyperledger.fabric.protos.ledger.rwset.kvrwset.KvRwset;
 import org.hyperledger.fabric.sdk.*;
 import org.hyperledger.fabric.sdk.security.CryptoSuite;
 import org.hyperledger.fabric_ca.sdk.HFCAClient;
@@ -99,6 +99,64 @@ public class DemoServiceImpl implements DemoService {
 
         return result;
 
+    }
+
+    private static void blockView(Channel channel) throws Exception{
+        BlockchainInfo blockchainInfo = channel.queryBlockchainInfo();
+        for(int i = 0; i < blockchainInfo.getHeight(); i++) {
+            BlockInfo blockInfo = channel.queryBlockByNumber(i);
+            long blockNumber = blockInfo.getBlockNumber();
+
+            int evelopCount = blockInfo.getEnvelopCount();
+
+            for(BlockInfo.EnvelopeInfo envelopeInfo : blockInfo.getEnvelopeInfos()) {
+
+                String channelId = envelopeInfo.getChannelId();
+
+                BlockInfo.TransactionEnvelopeInfo transactionEnvelopeInfo = (BlockInfo.TransactionEnvelopeInfo) envelopeInfo;
+
+                if(transactionEnvelopeInfo.getType() != BlockInfo.EnvelopeType.TRANSACTION_ENVELOPE) {
+                    continue;
+                }
+
+                for(BlockInfo.TransactionEnvelopeInfo.TransactionActionInfo transactionActionInfo : transactionEnvelopeInfo.getTransactionActionInfos()) {
+
+                    for(int j = 0; j < transactionActionInfo.getEndorsementsCount(); j++) {
+
+                        BlockInfo.EndorserInfo endorserInfo = transactionActionInfo.getEndorsementInfo(j);
+                    }
+
+                    for(int j = 0; j < transactionActionInfo.getChaincodeInputArgsCount(); j++) {
+                        new String(transactionActionInfo.getChaincodeInputArgs(j));
+                    }
+
+                    transactionActionInfo.getProposalResponseStatus();
+                    new String(transactionActionInfo.getProposalResponsePayload());
+
+                    TxReadWriteSetInfo txReadWriteSetInfo = transactionActionInfo.getTxReadWriteSet();
+
+                    for(TxReadWriteSetInfo.NsRwsetInfo nsRwsetInfo : txReadWriteSetInfo.getNsRwsetInfos()) {
+
+                        String namespace = nsRwsetInfo.getNaamespace();
+                        KvRwset.KVRWSet kvrwSet = nsRwsetInfo.getRwset();
+
+                        for(KvRwset.KVRead kvRead : kvrwSet.getReadsList()) {
+                            kvRead.getVersion().getTxNum();
+                            kvRead.getVersion().getBlockNum();
+
+                        }
+
+                        for(KvRwset.KVWrite kvWrite : kvrwSet.getWritesList()) {
+                            kvWrite.getKey();
+                            new String(kvWrite.getValue().toByteArray());
+
+
+                        }
+
+                    }
+                }
+            }
+        }
     }
 
 
@@ -319,7 +377,10 @@ public class DemoServiceImpl implements DemoService {
                 result += payload;
             }
         }
+        blockView(channel);
+
         return result;
+
     }
 
     private static void executeTransaction(String[] args) throws Exception {
