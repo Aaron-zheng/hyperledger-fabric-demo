@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -101,56 +102,76 @@ public class DemoServiceImpl implements DemoService {
 
     }
 
+    private static void printObject(Object object) throws Exception {
+        LOGGER.info("===============================" + object.getClass().getSimpleName());
+        for(Field field: object.getClass().getDeclaredFields()) {
+            field.setAccessible(true);
+            String name = field.getName();
+            Object value = field.get(object);
+            LOGGER.info("name: " + name + " value: " + value);
+        }
+    }
+
     private static void blockView(Channel channel) throws Exception{
+        printObject(channel);
+        printObject(channel.getPeers());
+        printObject(channel.getOrderers());
+
         BlockchainInfo blockchainInfo = channel.queryBlockchainInfo();
+        printObject(blockchainInfo);
+
         for(int i = 0; i < blockchainInfo.getHeight(); i++) {
             BlockInfo blockInfo = channel.queryBlockByNumber(i);
-            long blockNumber = blockInfo.getBlockNumber();
+            printObject(blockInfo);
+            printObject(blockInfo.getBlock());
 
+            long blockNumber = blockInfo.getBlockNumber();
             int evelopCount = blockInfo.getEnvelopCount();
 
             for(BlockInfo.EnvelopeInfo envelopeInfo : blockInfo.getEnvelopeInfos()) {
+                printObject(envelopeInfo);
 
                 String channelId = envelopeInfo.getChannelId();
 
-                BlockInfo.TransactionEnvelopeInfo transactionEnvelopeInfo = (BlockInfo.TransactionEnvelopeInfo) envelopeInfo;
-
-                if(transactionEnvelopeInfo.getType() != BlockInfo.EnvelopeType.TRANSACTION_ENVELOPE) {
+                if(envelopeInfo.getType() != BlockInfo.EnvelopeType.TRANSACTION_ENVELOPE) {
                     continue;
                 }
 
+                BlockInfo.TransactionEnvelopeInfo transactionEnvelopeInfo = (BlockInfo.TransactionEnvelopeInfo) envelopeInfo;
+                printObject(transactionEnvelopeInfo);
+//                LOGGER.info("transactionEnvelopeInfo: " + transactionEnvelopeInfo);
+
                 for(BlockInfo.TransactionEnvelopeInfo.TransactionActionInfo transactionActionInfo : transactionEnvelopeInfo.getTransactionActionInfos()) {
+                    printObject(transactionActionInfo);
 
                     for(int j = 0; j < transactionActionInfo.getEndorsementsCount(); j++) {
-
                         BlockInfo.EndorserInfo endorserInfo = transactionActionInfo.getEndorsementInfo(j);
+                        printObject(endorserInfo);
                     }
 
                     for(int j = 0; j < transactionActionInfo.getChaincodeInputArgsCount(); j++) {
-                        new String(transactionActionInfo.getChaincodeInputArgs(j));
+                        printObject(transactionActionInfo.getChaincodeInputArgs(j));
                     }
 
-                    transactionActionInfo.getProposalResponseStatus();
-                    new String(transactionActionInfo.getProposalResponsePayload());
+//                    LOGGER.info("proposalResponseStatus: " + transactionActionInfo.getProposalResponseStatus() + " proposalResponsePayload: " + new String(transactionActionInfo.getProposalResponsePayload()));
 
                     TxReadWriteSetInfo txReadWriteSetInfo = transactionActionInfo.getTxReadWriteSet();
 
                     for(TxReadWriteSetInfo.NsRwsetInfo nsRwsetInfo : txReadWriteSetInfo.getNsRwsetInfos()) {
-
+                        printObject(nsRwsetInfo);
                         String namespace = nsRwsetInfo.getNaamespace();
                         KvRwset.KVRWSet kvrwSet = nsRwsetInfo.getRwset();
 
-                        for(KvRwset.KVRead kvRead : kvrwSet.getReadsList()) {
-                            kvRead.getVersion().getTxNum();
-                            kvRead.getVersion().getBlockNum();
+//                        LOGGER.info("namespace: " + namespace + " kvrwSet: " + kvrwSet.getAllFields());
 
+                        for(KvRwset.KVRead kvRead : kvrwSet.getReadsList()) {
+//                            LOGGER.info("kvRead txNum: " + kvRead.getVersion().getTxNum() + " blockNum: " + kvRead.getVersion().getBlockNum());
+                            printObject(kvRead);
                         }
 
                         for(KvRwset.KVWrite kvWrite : kvrwSet.getWritesList()) {
-                            kvWrite.getKey();
-                            new String(kvWrite.getValue().toByteArray());
-
-
+//                            LOGGER.info("kvWrite key:" + kvWrite.getKey() + " value: " + new String(kvWrite.getValue().toByteArray()));
+                            printObject(kvWrite);
                         }
 
                     }
