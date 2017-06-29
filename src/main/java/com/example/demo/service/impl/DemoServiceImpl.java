@@ -7,6 +7,9 @@ import com.example.demo.fabric.sdkintegration.SampleStore;
 import com.example.demo.fabric.sdkintegration.SampleUser;
 import com.example.demo.service.DemoService;
 
+import com.google.protobuf.ByteString;
+import io.netty.util.internal.ConcurrentSet;
+import org.hyperledger.fabric.protos.common.Ledger;
 import org.hyperledger.fabric.protos.ledger.rwset.kvrwset.KvRwset;
 import org.hyperledger.fabric.sdk.*;
 import org.hyperledger.fabric.sdk.security.CryptoSuite;
@@ -102,44 +105,62 @@ public class DemoServiceImpl implements DemoService {
 
     }
 
+    private static Map<String, Integer> map = new HashMap<>();
+
     private static void printObject(Object object) throws Exception {
-        LOGGER.info("===============================" + object.getClass().getSimpleName());
+        StringBuffer output = new StringBuffer();
+        output.append("\n");
         for(Field field: object.getClass().getDeclaredFields()) {
             field.setAccessible(true);
             String name = field.getName();
             Object value = field.get(object);
-            LOGGER.info("name: " + name + " value: " + value);
+            if(null != value) {
+                if(value instanceof Collection) {
+                    Collection collection = (Collection) value;
+                    for(Object each : collection) {
+                        printObject(each);
+                    }
+                    return;
+                }
+                if(value instanceof ByteString) {
+                    ByteString byteString = (ByteString) value;
+                    value = new String(byteString.toByteArray());
+                }
+            }
+            output.append(name + ": " + value).append("\n");
         }
+        String className = object.getClass().getSimpleName();
+        int count = 0;
+        if(map.containsKey(className)) {
+            count = map.get(className);
+            count++;
+            map.put(className, count);
+        } else {
+            map.put(className, count);
+        }
+        LOGGER.info("===============================" + className + " " + count);
+        LOGGER.info(output.toString());
     }
+
 
     private static void blockView(Channel channel) throws Exception{
         printObject(channel);
-        printObject(channel.getPeers());
-        printObject(channel.getOrderers());
 
         BlockchainInfo blockchainInfo = channel.queryBlockchainInfo();
         printObject(blockchainInfo);
 
         for(int i = 0; i < blockchainInfo.getHeight(); i++) {
             BlockInfo blockInfo = channel.queryBlockByNumber(i);
-            printObject(blockInfo);
             printObject(blockInfo.getBlock());
-
-            long blockNumber = blockInfo.getBlockNumber();
-            int evelopCount = blockInfo.getEnvelopCount();
 
             for(BlockInfo.EnvelopeInfo envelopeInfo : blockInfo.getEnvelopeInfos()) {
                 printObject(envelopeInfo);
-
-                String channelId = envelopeInfo.getChannelId();
 
                 if(envelopeInfo.getType() != BlockInfo.EnvelopeType.TRANSACTION_ENVELOPE) {
                     continue;
                 }
 
                 BlockInfo.TransactionEnvelopeInfo transactionEnvelopeInfo = (BlockInfo.TransactionEnvelopeInfo) envelopeInfo;
-                printObject(transactionEnvelopeInfo);
-//                LOGGER.info("transactionEnvelopeInfo: " + transactionEnvelopeInfo);
 
                 for(BlockInfo.TransactionEnvelopeInfo.TransactionActionInfo transactionActionInfo : transactionEnvelopeInfo.getTransactionActionInfos()) {
                     printObject(transactionActionInfo);
@@ -153,24 +174,17 @@ public class DemoServiceImpl implements DemoService {
                         printObject(transactionActionInfo.getChaincodeInputArgs(j));
                     }
 
-//                    LOGGER.info("proposalResponseStatus: " + transactionActionInfo.getProposalResponseStatus() + " proposalResponsePayload: " + new String(transactionActionInfo.getProposalResponsePayload()));
-
                     TxReadWriteSetInfo txReadWriteSetInfo = transactionActionInfo.getTxReadWriteSet();
 
                     for(TxReadWriteSetInfo.NsRwsetInfo nsRwsetInfo : txReadWriteSetInfo.getNsRwsetInfos()) {
                         printObject(nsRwsetInfo);
-                        String namespace = nsRwsetInfo.getNaamespace();
                         KvRwset.KVRWSet kvrwSet = nsRwsetInfo.getRwset();
 
-//                        LOGGER.info("namespace: " + namespace + " kvrwSet: " + kvrwSet.getAllFields());
-
                         for(KvRwset.KVRead kvRead : kvrwSet.getReadsList()) {
-//                            LOGGER.info("kvRead txNum: " + kvRead.getVersion().getTxNum() + " blockNum: " + kvRead.getVersion().getBlockNum());
                             printObject(kvRead);
                         }
 
                         for(KvRwset.KVWrite kvWrite : kvrwSet.getWritesList()) {
-//                            LOGGER.info("kvWrite key:" + kvWrite.getKey() + " value: " + new String(kvWrite.getValue().toByteArray()));
                             printObject(kvWrite);
                         }
 
@@ -178,6 +192,7 @@ public class DemoServiceImpl implements DemoService {
                 }
             }
         }
+        map.clear();
     }
 
 
