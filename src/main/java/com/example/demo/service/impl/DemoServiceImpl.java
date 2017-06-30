@@ -90,10 +90,15 @@ public class DemoServiceImpl implements DemoService {
     public String initial() {
         String result = "";
         try {
+            LOGGER.info("createChannel");
             createChannel();
+            LOGGER.info("peerJoinChannel");
             peerJoinChannel();
+            LOGGER.info("initialChannel");
             initialChannel();
+            LOGGER.info("installChaincode");
             installChaincode();
+            LOGGER.info("instantiateChaincode");
             instantiateChaincode();
             result = "启动成功";
         } catch (Exception ex) {
@@ -107,10 +112,10 @@ public class DemoServiceImpl implements DemoService {
 
     private static Map<String, Integer> map = new HashMap<>();
 
-    private static void printObject(Object object) throws Exception {
+    private static String getField(Object object, Class clazz) throws Exception {
         StringBuffer output = new StringBuffer();
         output.append("\n");
-        for(Field field: object.getClass().getDeclaredFields()) {
+        for(Field field: clazz.getDeclaredFields()) {
             field.setAccessible(true);
             String name = field.getName();
             Object value = field.get(object);
@@ -120,14 +125,32 @@ public class DemoServiceImpl implements DemoService {
                     for(Object each : collection) {
                         printObject(each);
                     }
-                    return;
                 }
-                if(value instanceof ByteString) {
-                    ByteString byteString = (ByteString) value;
-                    value = new String(byteString.toByteArray());
+//                if(value instanceof String) {
+//                    output.append("string_: " + value).append("\n");
+//                } if(value instanceof Integer) {
+//                    output.append("integer_: " + value).append("\n");
+//                } if(value instanceof Long) {
+//                    output.append("long_: " + value).append("\n");
+//                }
+                if (value instanceof char[]) {
+                    char[] chars = (char[]) value;
+                    output.append("chars_: " + new String(chars)).append("\n");
+                }
+                else {
+                    output.append(name + ": " + value).append("\n");
                 }
             }
-            output.append(name + ": " + value).append("\n");
+        }
+        return output.toString();
+    }
+
+    private static void printObject(Object object) throws Exception {
+        StringBuffer output = new StringBuffer();
+        output.append(getField(object, object.getClass()));
+        Class superClass = object.getClass().getSuperclass();
+        if(null != superClass) {
+            output.append(getField(object, superClass));
         }
         String className = object.getClass().getSimpleName();
         int count = 0;
@@ -233,6 +256,7 @@ public class DemoServiceImpl implements DemoService {
         channel = client.newChannel("foo", orderer, channelConfiguration,
                 client.getChannelConfigurationSignature(channelConfiguration, sampleOrg.getPeerAdmin())
         );
+        printObject(channel);
         //channel的创建，其实是通过orderer.sendTransaction实现的
         //会创建创世区块getGenesisBlock，并且需要添加共识节点orderer
     }
@@ -241,6 +265,8 @@ public class DemoServiceImpl implements DemoService {
         //channel添加peer节点，会连接到fabric
         //重复添加的话，会提示status: 500, message: Cannot create ledger from genesis block, due to LedgerID already exists
         channel.joinPeer(peer);
+        printObject(peer);
+        printObject(channel);
         //通过Envelope发去orderer来创建创世块
         sampleOrg.addPeer(peer);
     }
@@ -248,6 +274,7 @@ public class DemoServiceImpl implements DemoService {
     private static void initialChannel() throws Exception {
         //Starts the channel. event hubs will connect
         channel.initialize();
+        printObject(channel);
     }
 
     private static void installChaincode() throws Exception {
@@ -257,8 +284,9 @@ public class DemoServiceImpl implements DemoService {
         installProposalRequest.setChaincodeID(chaincodeID);
         installProposalRequest.setChaincodeSourceLocation(new File("src/main/java/com/example/demo/chaincode"));
         installProposalRequest.setChaincodeVersion("1");
+        printObject(installProposalRequest);
         responses = client.sendInstallProposal(installProposalRequest, sampleOrg.getPeers());
-
+        printObject(responses);
         Collection<ProposalResponse> successful = new LinkedList<>();
         Collection<ProposalResponse> failed = new LinkedList<>();
         for(ProposalResponse proposalResponse : responses) {
@@ -284,8 +312,10 @@ public class DemoServiceImpl implements DemoService {
         ChaincodeEndorsementPolicy chaincodeEndorsementPolicy = new ChaincodeEndorsementPolicy();
         chaincodeEndorsementPolicy.fromYamlFile(new File("src/main/java/com/example/demo/fabric/fixture/sdkintegration/chaincodeendorsementpolicy.yaml"));
         instantiateProposalRequest.setChaincodeEndorsementPolicy(chaincodeEndorsementPolicy);
+        printObject(instantiateProposalRequest);
         //发送实例化请求到fabric
         responses = channel.sendInstantiationProposal(instantiateProposalRequest);
+        printObject(responses);
 
         //////////////////////////////////////////////////////发送结果到orderer
         Collection<ProposalResponse> successful = new LinkedList<>();
@@ -297,12 +327,16 @@ public class DemoServiceImpl implements DemoService {
                 failed.add(proposalResponse);
             }
         }
+        printObject(successful);
+        printObject(channel.getOrderers());
         channel.sendTransaction(successful, channel.getOrderers());
     }
 
     private static void check() throws Exception {
         if(null == client.getUserContext()) {
             client.setUserContext(sampleOrg.getPeerAdmin());
+            printObject(sampleOrg.getPeerAdmin());
+            printObject(sampleOrg.getPeerAdmin().getEnrollment());
         }
         if(null == channel) {
             channel = client.newChannel("foo");
@@ -395,15 +429,18 @@ public class DemoServiceImpl implements DemoService {
         queryByChaincodeRequest.setArgs(args);
         queryByChaincodeRequest.setFcn("invoke");
         queryByChaincodeRequest.setChaincodeID(chaincodeID);
+        printObject(chaincodeID);
 
         Map<String, byte[]> tm2 = new HashMap<>();
         tm2.put("HyperLedgerFabric", "QueryByChaincodeRequest:JavaSDK".getBytes(UTF_8));
         tm2.put("method", "QueryByChaincodeRequest".getBytes(UTF_8));
         queryByChaincodeRequest.setTransientMap(tm2);
+        printObject(queryByChaincodeRequest);
 
         String result = "";
         Collection<ProposalResponse> responses = channel.queryByChaincode(queryByChaincodeRequest);
         for(ProposalResponse proposalResponse: responses) {
+            printObject(proposalResponse);
             if(proposalResponse.isVerified() && proposalResponse.getStatus() == ProposalResponse.Status.SUCCESS) {
                 String payload = proposalResponse.getProposalResponse().getResponse().getPayload().toStringUtf8();
                 LOGGER.info("payload: " + payload);
